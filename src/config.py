@@ -13,6 +13,36 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+try:  # Only available when running inside Streamlit Cloud/local UI sessions
+    import streamlit as st
+
+    _STREAMLIT_SECRETS = st.secrets
+except Exception:  # pragma: no cover - Streamlit not present outside UI runs
+    _STREAMLIT_SECRETS = None
+
+
+def _hydrate_from_streamlit_secrets() -> None:
+    """Mirror Streamlit secrets into env vars + service account file."""
+
+    if not _STREAMLIT_SECRETS:
+        return
+
+    for key, value in _STREAMLIT_SECRETS.items():
+        if key == "GOOGLE_SERVICE_ACCOUNT_JSON":
+            continue
+        if isinstance(value, (str, int, float, bool)) and key not in os.environ:
+            os.environ[key] = str(value)
+
+    if "GOOGLE_SERVICE_ACCOUNT_JSON" in _STREAMLIT_SECRETS:
+        secrets_dir = Path("secrets")
+        secrets_dir.mkdir(exist_ok=True)
+        sa_path = secrets_dir / "service-account.json"
+        sa_path.write_text(_STREAMLIT_SECRETS["GOOGLE_SERVICE_ACCOUNT_JSON"], encoding="utf-8")
+        os.environ.setdefault("GOOGLE_SERVICE_ACCOUNT_FILE", str(sa_path))
+
+
+_hydrate_from_streamlit_secrets()
+
 DEFAULT_GEMINI_CANDIDATES: Sequence[str] = (
     "gemini-1.5-flash",
     "gemini-1.5-pro",
