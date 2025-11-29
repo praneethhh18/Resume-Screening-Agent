@@ -11,22 +11,37 @@ Boutique recruiting teams need a transparent way to triage resumes fast. This pr
 ### Architecture at a Glance
 
 ```text
-Users ──▶ Streamlit UI (`src/ui/app.py`)
-          │ gathers JD + resumes, toggles automations
-          ▼
-   ResumeRankingAgent (`src/ranking_agent.py`)
-      ├─▶ Deterministic heuristics (`src/scoring.py`)
-      ├─▶ Embedding search (Chroma, `storage/chroma`)
-      └─▶ Optional Gemini reasoning via LangChain
-          │
-          ▼
-   Outputs
-      ├─▶ Streamlit cards + CSV download
-      ├─▶ Google Sheets rows (`append_shortlist_to_sheet`)
-      └─▶ Calendar holds (`create_calendar_holds`)
+┌──────────────┐        upload JD + resumes        ┌───────────────────────┐
+│ Recruiter UI │ ─────────────────────────────────▶ Streamlit Frontend    │
+│  (browser)   │◀──────────── shortlists ──────────┤ (`src/ui/app.py`)     │
+└──────────────┘                                   │ • Validates input     │
+                                                   │ • Calls agent         │
+                                                   └─────────┬─────────────┘
+                                                             │
+                                                             ▼
+                                                ┌──────────────────────────┐
+                                                │ ResumeRankingAgent       │
+                                                │ (`src/ranking_agent.py`) │
+                                                ├──────────┬───────────────┤
+                                                │          │               │
+                              ┌─────────────────▼─┐   ┌───▼─────────┐  ┌──▼────────┐
+                              │Deterministic      │   │Chroma Vector │  │Gemini     │
+                              │heuristics         │   │Store         │  │Reasoning  │
+                              │(`src/scoring.py`) │   │(embeddings)  │  │(optional) │
+                              └────────┬──────────┘   └────┬─────────┘  └────┬──────┘
+                                       │                   │                 │
+                                       └───────── blended score ─────────────┘
+                                                             │
+                                                             ▼
+                                   ┌─────────────────────────────────────────┐
+                                   │ Outputs                                 │
+                                   │ • Streamlit cards & CSV download        │
+                                   │ • Google Sheets rows (`google_sync.py`) │
+                                   │ • Calendar holds (`google_sync.py`)     │
+                                   └─────────────────────────────────────────┘
 ```
 
-*Future n8n orchestration*: expose an API endpoint or CLI wrapper, let n8n trigger the run, and route ranked candidates to Slack/ATS. Details in **Potential Improvements**.
+End-to-end flow: (1) Recruiter provides JD + resumes in Streamlit. (2) UI normalizes files and sends them to `ResumeRankingAgent`. (3) Agent scores candidates using heuristics + embeddings, optionally calling Gemini. (4) Results stream back to the UI, are exported as CSV, and—if toggled—synced to Google Sheets or Calendar. (5) Future n8n workflows can call the same agent via CLI/API to branch results into Slack/ATS.
 
 ## Features & Limitations
 
